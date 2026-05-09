@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>TMD Nowcast API</title>
+</head>
+<body style="margin: 0; padding: 20px; background: #f0f0f0; font-family: sans-serif;">
+    <div id="status" style="color: #333; font-weight: bold;">Initializing Nowcast Scan...</div>
+
+    <script>
+        const PROXY_URL = "https://gainer.azurewebsites.net/weather/tmd_proxy.php?url=";
+        const BASE_URL = "https://satda.tmd.go.th/wp-content/uploads/data/nowcasting/bkk/loop/";
+        
+        function getProxyUrl(targetUrl) {
+            return PROXY_URL + encodeURIComponent(targetUrl);
+        }
+
+        const BOUNDS_NOW = {
+            "lat_min": 12.199701331177776,
+            "lat_max": 15.08194231403612,
+            "lon_min": 99.1473353511044,
+            "lon_max": 102.10104080305035
+        };
+
+        const BOUNDS_FORECAST = {
+            "lat_min": 12.199701309204102,
+            "lat_max": 15.081942558288574,
+            "lon_min": 99.1473388671875,
+            "lon_max": 102.10104370117188
+        };
+
+        const COLOR_LEVELS = {
+            "very_heavy": [[241,0,0], [229,0,92]], 
+            "heavy": [[255,85,0], [239,159,0], [225,150,0]], 
+            "moderate": [[255,200,0], [247,247,0], [225,225,0], [216,216,0]], 
+            "light": [[0,244,0], [0,229,0], [0,208,69], [0,203,0]], 
+            "drizzle": [[0,189,0], [0,170,0]] 
+        };
+
+        function getThailandTime() {
+            const now = new Date();
+            const utc = now.getTime();
+            return new Date(utc + (3600000 * 7)); 
+        }
+
+        function formatTimestamp(date) {
+            const Y = date.getUTCFullYear();
+            const M = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const D = String(date.getUTCDate()).padStart(2, '0');
+            const h = String(date.getUTCHours()).padStart(2, '0');
+            const m = String(date.getUTCMinutes()).padStart(2, '0');
+            return `${Y}${M}${D}_${h}${m}00`;
+        }
+
+        function formatISOTimestamp(date) {
+            const Y = date.getUTCFullYear();
+            const M = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const D = String(date.getUTCDate()).padStart(2, '0');
+            const h = String(date.getUTCHours()).padStart(2, '0');
+            const m = String(date.getUTCMinutes()).padStart(2, '0');
+            return `${Y}-${M}-${D}T${h}:${m}:00+07:00`;
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; 
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                      Math.sin(dLon/2) * Math.sin(dLon/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        function classifyPixel(r, g, b, a) {
+            if (a < 10) return "none";
+            let bestDist = Infinity;
+            let bestLevel = "none";
+            for (const [level, colors] of Object.entries(COLOR_LEVELS)) {
+                for (const [cr, cg, cb] of colors) {
+                    const dist = Math.sqrt((r-cr)**2 + (g-cg)**2 + (b-cb)**2);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        bestLevel = level;
+                    }
+                }
+            }
+            return bestDist < 80 ? bestLevel : "unknown";
+        }
+
+        async function loadImageData(url) {
+            try {
+                const response = await fetch(getProxyUrl(url));
+                if (!response.ok) return null;
+                
+                const lastModified = response.headers.get("X-Last-Modified");
+                const blob = await response.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        canvas.width = img.width; canvas.height = img.height;
+                        const ctx = canvas.getContext("2d");
+                        ctx.drawImage(img, 0, 0);
+                        URL.revokeObjectURL(objectUrl);
+                        resolve({ 
+                            width: img.width, 
+                            height: img.height, 
+                            data: ctx.getImageData(0, 0, img.width, img.height).data,
+                            lastModified: lastModified
+                        });
+                    };
+                    img.onerror = () => {
+                        URL.revokeObjectURL(objectUrl);
+                        resolve(null);
+                    };
+                    img.src = objectUrl;
+                });
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function outputJson(data) {
+            const jsonText = JSON.stringify(data, null, 2);
+            document.documentElement.innerHTML = `
+                <head><meta charset="UTF-8"></head>
+                <body style="margin: 0; padding: 20px; background: white; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">${jsonText}</body>
+            `;
+        }
+
+        async function processAll() {
+            const statusEl = document.getElementById('status');
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                let latParam = urlParams.get('lat');
+                let lonParam = urlParams.get('lon');
+                let radiusParam = urlParams.get('radius') || "3";
+
+                let lat, lon, radius;
+
+                // If lat/lon are missing, try browser geolocation
+                if (!latParam || !lonParam) {
+                    statusEl.textContent = "Requesting your location...";
+                    try {
+                        const pos = await new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+                        });
+                        lat = pos.coords.latitude;
+                        lon = pos.coords.longitude;
+                    } catch (e) {
+                        // Denied or failed, use defaults
+                        lat = 13.7563;
+                        lon = 100.5018;
+                    }
+                } else {
+                    lat = parseFloat(latParam);
+                    lon = parseFloat(lonParam);
+                }
+
+                radius = parseFloat(radiusParam);
+
+                // Sync the URL bar with the final values used
+                const newUrl = new URL(window.location);
+                newUrl.searchParams.set('lat', lat.toFixed(5));
+                newUrl.searchParams.set('lon', lon.toFixed(5));
+                newUrl.searchParams.set('radius', radius);
+                window.history.replaceState({}, '', newUrl);
+
+                // Bounds Check: Ensure the lat/lon is within the radar's geographical coverage
+                if (lat < BOUNDS_NOW.lat_min || lat > BOUNDS_NOW.lat_max || 
+                    lon < BOUNDS_NOW.lon_min || lon > BOUNDS_NOW.lon_max) {
+                    outputJson({
+                        error: "Requested coordinates are outside the TMD radar coverage area.",
+                        metadata: { lat: lat, lon: lon, radius_km: radius, generated_at: new Date().toISOString() }
+                    });
+                    return;
+                }
+
+                let thTime = getThailandTime();
+                thTime.setMinutes(Math.floor(thTime.getMinutes() / 15) * 15);
+                thTime.setSeconds(0);
+                thTime.setMinutes(thTime.getMinutes() - 45);
+
+                statusEl.textContent = "Processing radar frames from Azure Proxy. Please wait 5-10 seconds...";
+                const framePromises = [];
+                for (let i = 0; i < 20; i++) {
+                    const ts = formatTimestamp(thTime);
+                    const isoTs = formatISOTimestamp(thTime);
+                    const target = `${BASE_URL}${ts}.png`;
+                    
+                    framePromises.push(loadImageData(target).then(img => img ? { ...img, ts, isoTs } : null));
+                    thTime.setMinutes(thTime.getMinutes() + 15);
+                }
+
+                const rawResults = await Promise.all(framePromises);
+                const successfulFrames = rawResults.filter(f => f !== null).sort((a, b) => a.ts.localeCompare(b.ts));
+
+                if (successfulFrames.length === 0) {
+                    outputJson({ error: "No radar frames found. Check if proxy is up or internet connection.", metadata: { generated_at: new Date().toISOString() } });
+                    return;
+                }
+
+                statusEl.textContent = "Analyzing pixels...";
+                let generatedAt = null;
+                const forecasts = successfulFrames.map((img, idx) => {
+                    const isFirst = (idx === 0);
+                    const activeBounds = isFirst ? BOUNDS_NOW : BOUNDS_FORECAST;
+                    
+                    if (isFirst && img.lastModified) {
+                        try { generatedAt = new Date(img.lastModified).toISOString(); } catch(e) {}
+                    }
+
+                    const { width, height, data } = img;
+                    let totalPixels = 0, rainPixels = 0, maxIntensityIdx = -1;
+                    const intensityRank = ["drizzle", "light", "moderate", "heavy", "very_heavy"];
+
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            const pLon = activeBounds.lon_min + (x / width) * (activeBounds.lon_max - activeBounds.lon_min);
+                            const pLat = activeBounds.lat_max - (y / height) * (activeBounds.lat_max - activeBounds.lat_min);
+
+                            if (getDistance(lat, lon, pLat, pLon) <= radius) {
+                                totalPixels++;
+                                const pixelIdx = (y * width + x) * 4;
+                                const level = classifyPixel(data[pixelIdx], data[pixelIdx+1], data[pixelIdx+2], data[pixelIdx+3]);
+                                if (level !== "none" && level !== "unknown") {
+                                    // Count for percent_rain: exclude drizzle, count light upwards
+                                    if (level !== "drizzle") {
+                                        rainPixels++;
+                                    }
+                                    const rank = intensityRank.indexOf(level);
+                                    if (rank > maxIntensityIdx) maxIntensityIdx = rank;
+                                }                            }
+                        }
+                    }
+
+                    return {
+                        timestamp: img.isoTs,
+                        status: maxIntensityIdx >= 0 ? intensityRank[maxIntensityIdx] : "clear",
+                        percent_rain: totalPixels > 0 ? parseFloat(((rainPixels / totalPixels) * 100).toFixed(2)) : 0
+                    };
+                });
+
+                let finalGeneratedAt = "";
+                if (generatedAt) {
+                    // generatedAt is an ISO string (UTC) from the HTTP header.
+                    // To get the exact +07:00 visual representation using our formatISOTimestamp function
+                    // (which reads getUTC... methods), we must shift the absolute time by 7 hours from UTC.
+                    const d = new Date(generatedAt);
+                    const shiftedToTh = new Date(d.getTime() + (3600000 * 7));
+                    finalGeneratedAt = formatISOTimestamp(shiftedToTh);
+                } else {
+                    finalGeneratedAt = formatISOTimestamp(getThailandTime());
+                }
+
+                outputJson({
+                    metadata: { 
+                        lat: lat, 
+                        lon: lon, 
+                        radius_km: radius, 
+                        generated_at: finalGeneratedAt
+                    },
+                    forecasts
+                });
+
+            } catch (err) {
+                statusEl.innerHTML = `<span style="color:red">Error: ${err.message}</span><br><br>Note: Browsers often block network requests from <b>file://</b>. Please run this via a local server (e.g. <code>python3 -m http.server</code>).`;
+                console.error(err);
+            }
+        }
+
+        processAll();
+    </script>
+</body>
+</html>
