@@ -33,7 +33,7 @@ Because this API runs entirely in the browser (using JavaScript and the HTML5 Ca
 *\*If `lat` and `lon` are not provided, the page will attempt to prompt the user for their browser's geolocation. If denied, it falls back to the default coordinates (Central Bangkok).*
 
 ### Example Request
-[http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5](http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5)
+[`http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5`](http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5)
 
 ---
 
