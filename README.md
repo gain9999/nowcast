@@ -1,5 +1,7 @@
 # TMD Nowcast Radar API (Client-Side)
 
+![Process](process.png)
+
 A completely serverless, client-side API that extracts real-time and forecasted rain intensity data for specific locations in Bangkok. It directly processes radar imagery from the Thai Meteorological Department (TMD) to provide structured JSON data.
 
 **Base URL:** [http://gain9999.github.io/nowcast](http://gain9999.github.io/nowcast)
