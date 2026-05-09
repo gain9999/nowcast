@@ -150,6 +150,7 @@
                         lat = pos.coords.latitude;
                         lon = pos.coords.longitude;
                     } catch (e) {
+                        console.warn("Geolocation failed or was denied by the browser:", e.message);
                         // Denied or failed, use defaults
                         lat = 13.7563;
                         lon = 100.5018;
