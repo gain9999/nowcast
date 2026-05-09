@@ -2,7 +2,7 @@
 
 A completely serverless, client-side API that extracts real-time and forecasted rain intensity data for specific locations in Bangkok. It directly processes radar imagery from the Thai Meteorological Department (TMD) to provide structured JSON data.
 
-**Base URL:** `http://gain9999.github.io/nowcast`
+**Base URL:** [http://gain9999.github.io/nowcast](http://gain9999.github.io/nowcast)
 
 ---
 
@@ -33,9 +33,7 @@ Because this API runs entirely in the browser (using JavaScript and the HTML5 Ca
 *\*If `lat` and `lon` are not provided, the page will attempt to prompt the user for their browser's geolocation. If denied, it falls back to the default coordinates (Central Bangkok).*
 
 ### Example Request
-```text
-http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5
-```
+[http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5](http://gain9999.github.io/nowcast?lat=13.7322&lon=100.5481&radius=5)
 
 ---
 
