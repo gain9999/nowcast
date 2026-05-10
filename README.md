@@ -86,6 +86,10 @@ Upon a successful request, the page will automatically process the radar data an
 
 ## ⚙️ The Logic Behind the Scenes
 
+**In simple terms:** Imagine a digital weather expert sitting in your browser. Every time you open this page, it immediately "looks" at 20 different radar maps from the Thai Meteorological Department. It zooms in specifically on your chosen location, identifies the exact colors shown on those maps (from green for light rain to purple for heavy storms), and translates those colors into the easy-to-read numbers and status updates you see in the JSON results. It processes all these maps at once to give you an instant view of what is happening now and what is likely coming over the next 3 hours.
+
+---
+
 1.  **Parallel Probing:** The script calculates the current time in Thailand and aggressively probes the TMD server for up to 20 frames simultaneously (covering current conditions and up to a 3-hour forecast).
 2.  **Optimized Geographic Mapping:** Instead of scanning whole images, it pre-calculates a localized "bounding box" of relevant pixels for your requested `lat`/`lon` and `radius` using the Haversine formula.
 3.  **High-Speed Color Classification:** It extracts the `rgba` values of the active pixels and uses a memoization cache to rapidly classify the intensity of the rain against a calibrated list of color codes, without redundant math.
