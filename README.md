@@ -53,6 +53,11 @@ Upon a successful request, the page will automatically process the radar data an
     "radius_km": 5,
     "generated_at": "2026-05-09T14:45:00+07:00"
   },
+  "observation": {
+    "timestamp": "2026-05-09T14:45:00+07:00",
+    "status": "clear",
+    "percent_rain": 0
+  },
   "forecasts": [
     {
       "timestamp": "2026-05-09T15:00:00+07:00",
@@ -70,19 +75,20 @@ Upon a successful request, the page will automatically process the radar data an
 
 ### Key Definitions:
 *   **`metadata.generated_at`**: The exact local Thailand time (`+07:00`) when the TMD server finished generating this batch of radar images.
+*   **`observation`**: The most recent actual radar reading (the earliest frame in the sequence).
+*   **`forecasts`**: The array containing the 15-minute predictive models.
 *   **`forecasts.timestamp`**: The local Thailand time (`+07:00`) for the specific 15-minute forecast frame.
 *   **`status`**: The **absolute maximum** rain intensity detected *anywhere* within your specified radius. This acts as a worst-case scenario alert. 
-    *   *Values:* `"clear"`, `"drizzle"`, `"light"`, `"moderate"`, `"heavy"`, `"very_heavy"`.
-*   **`percent_rain`**: The percentage (0 to 100) of the area inside your radius that is experiencing **"light" rain or heavier**. *(Note: "drizzle" is intentionally excluded from this calculation to filter out negligible rainfall).*
+    *   *Values:* `"clear"`, `"cloudy"`, `"drizzle"`, `"light"`, `"moderate"`, `"heavy"`, `"very_heavy"`.
+*   **`percent_rain`**: The percentage (0 to 100) of the area inside your radius that is experiencing **"light" rain or heavier**. *(Note: "cloudy" and "drizzle" are intentionally excluded from this calculation to filter out negligible rainfall).*
 
 ---
 
 ## ⚙️ The Logic Behind the Scenes
 
-1.  **Dynamic Timeline Probing:** The script calculates the current time in Thailand and generates a timeline of 15-minute intervals. It aggressively probes the TMD server for up to 20 frames (covering current conditions and up to a 3-hour forecast).
-2.  **Geographic Mapping:** It loads the transparent PNG radar overlays into memory. Using the official geographic bounding box coordinates provided by TMD, it maps every single pixel in the image to a real-world Latitude and Longitude.
-3.  **Haversine Distance:** It calculates the distance of every pixel from your requested `lat`/`lon` using the Haversine formula (accounting for the Earth's curvature). If a pixel falls within your `radius`, it is analyzed.
-4.  **Color Classification:** It extracts the `rgba` (Red, Green, Blue, Alpha) values of the active pixels. It compares these colors against the strict hex color codes used in the official TMD "Rain Criteria" legend to classify the intensity of the rain at that specific coordinate.
+1.  **Parallel Probing:** The script calculates the current time in Thailand and aggressively probes the TMD server for up to 20 frames simultaneously (covering current conditions and up to a 3-hour forecast).
+2.  **Optimized Geographic Mapping:** Instead of scanning whole images, it pre-calculates a localized "bounding box" of relevant pixels for your requested `lat`/`lon` and `radius` using the Haversine formula.
+3.  **High-Speed Color Classification:** It extracts the `rgba` values of the active pixels and uses a memoization cache to rapidly classify the intensity of the rain against a calibrated list of color codes, without redundant math.
 
 ---
 
